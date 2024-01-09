@@ -1,0 +1,26 @@
+---
+title: "Flow_cytometry_analysis"
+author: "Adam Sorbie"
+date: "2024-01-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load data
+
+```{r}
+library(Spectre)
+Spectre::package.check()
+Spectre::package.load()
+```
+```{r}
+data_list <- Spectre::read.files(file.loc = "DC-TC-04Dec23/", file.type = ".fcs")
+```
+
+```{r}
+
+```
+
