@@ -16,15 +16,15 @@ with a comment
 
 
 ```{r}
-source("helper_functions.R")
+source("scripts/helper_functions.R")
 pacman::p_load("tidyverse", "ggprism", "rstatix", "ggpubr", "EnvStats", "janitor", "readxl", "pheatmap")
 conflicted::conflicts_prefer(rstatix::filter)
 
 # LOAD REAL DATA HERE - MUST CONTAIN % COLUMNS FORMATTED ACCORDING TO "percentage_calculation_database.xlsx" FILE
-flowjo_dat <- read_xlsx("Brain_S4.xlsx", sheet = 1)
+flowjo_dat <- read_xlsx("data/Brain_S4.xlsx", sheet = 1)
 
 # load calculation database 
-calc_db <- read_xlsx("percentage_calculation_database S4.xlsx")
+calc_db <- read_xlsx("data/percentage_calculation_database S4.xlsx")
 conflicted::conflicts_prefer(rstatix::select)
 ```
 
