@@ -24,8 +24,11 @@ conflicted::conflicts_prefer(rstatix::filter)
 flowjo_dat <- read_xlsx("data/Brain_S4.xlsx", sheet = 1)
 
 # load calculation database 
-calc_db <- read_xlsx("data/percentage_calculation_database S4.xlsx")
+calc_db <- read_xlsx("data/percentage_calculation_database.xlsx")
 conflicted::conflicts_prefer(rstatix::select)
+
+# make folder for figures
+dir.create("plots")
 ```
 
 Force first column name to be sample ID
@@ -166,6 +169,7 @@ for (i in unique(absolute_counts_long$marker)){
   theme_prism(base_size = 16) +
   theme(legend.position = "none") +
   stat_compare_means(comparisons = comparisons, method = "wilcox.test", label = "p.format") 
+  ggsave(paste("plots/", i, "_barplot.png"), device = "png", height = 5, width = 4, dpi=300)
   print(p)
 }
 ```
@@ -204,7 +208,8 @@ for (i in unique(perc_long$marker)){
   scale_color_prism("floral") + 
   scale_fill_prism("floral") + 
   theme_prism(base_size = 16) + 
-  theme(legend.position = "none") 
+  theme(legend.position = "none")
+  ggsave(paste("plots/", i, "_barplot.png"), device = "png", height = 5, width = 4, dpi=300)
   print(p)
 }
 
