@@ -11,16 +11,202 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Load data
 
+Changes to the code are only required in this code block, and are marked
+with a comment
+
+
 ```{r}
-library(Spectre)
-Spectre::package.check()
-Spectre::package.load()
+source("helper_functions.R")
+pacman::p_load("tidyverse", "ggprism", "rstatix", "ggpubr", "EnvStats", "janitor", "readxl", "pheatmap")
+conflicted::conflicts_prefer(rstatix::filter)
+
+# LOAD REAL DATA HERE - MUST CONTAIN % COLUMNS FORMATTED ACCORDING TO "percentage_calculation_database.xlsx" FILE
+flowjo_dat <- read_xlsx("Brain_S4.xlsx", sheet = 1)
+
+# load calculation database 
+calc_db <- read_xlsx("percentage_calculation_database S4.xlsx")
+conflicted::conflicts_prefer(rstatix::select)
 ```
+
+Force first column name to be sample ID
+
 ```{r}
-data_list <- Spectre::read.files(file.loc = "DC-TC-04Dec23/", file.type = ".fcs")
+flowjo_dat <- flowjo_dat %>% 
+  rename(sampleID = 1)
+```
+
+Wrap these into functions when refactoring
+
+
+```{r}
+populations <- flowjo_dat %>% select(contains("%")) %>% colnames()
+calc_db_filt <- calc_db %>% filter(population_perc %in% populations)
+
+
+extra_columns <- setdiff(populations, calc_db$population_perc)
+if (length(extra_columns) > 0) {
+  cat("The following populations are not in the database:\n", paste(extra_columns, collapse = ", "), "\n")
+}
+
+```
+
+Check columns necessary for calculation are named correctly 
+
+```{r}
+key_cols <- c("beads concentration", "beads | count", "Live cells | count")
+if (! all(key_cols %in% colnames(flowjo_dat))){
+  print(paste("Columns", key_cols, "not found in data, please rename or add these columns to dataframe"))
+}
+```
+
+
+```{r}
+# remove percentages
+flowjo_dat <- flowjo_dat %>% 
+  select(-contains("%"))
+
+calc_cols <- flowjo_dat %>% 
+ select(`beads concentration`:last_col(), -c(`beads concentration`, `beads | count`)) %>% 
+  colnames()
 ```
 
 ```{r}
-
+flowjo_dat_calc <- flowjo_dat %>% 
+  mutate(across(.cols = all_of(calc_cols), .fns=~ (.x / `beads | count`) * `beads concentration`, .names = "{.col}_adj")) 
 ```
 
+Need to throw an error here if column in calc_db missing 
+```{r}
+pairs <- list()
+for (i in 1:nrow(calc_db_filt)){
+  pairs[[i]] <- c(as.character(calc_db_filt[i,]["population"]), as.character(calc_db_filt[i,]["parent"]))
+}
+names(pairs) <- calc_db_filt$population_perc
+
+
+flowjo_dat_calc_perc <- map_dfc(pairs, ~ flowjo_dat_calc %>% 
+                select(contains(.x)) %>% 
+                reduce(., `/`) * 100) %>%
+    rename_all(~ names(pairs)) %>%
+    bind_cols(flowjo_dat_calc, .)
+```
+
+Flag outliers
+
+Think about a better way to do this - 
+* could print flagged samples and population
+* could bind rows and return dataframe summary and print nicely with e.g. kable 
+
+```{r}
+outlier_dat <- flowjo_dat_calc_perc %>% 
+    select(sampleID, contains("_adj"))
+adj_columns <- colnames(flowjo_dat_calc_perc %>% 
+    select(contains("_adj")))
+for (i in adj_columns){
+  
+  outlier_det <- identify_outliers(outlier_dat, variable = i)
+  if (nrow(outlier_det) > 0){
+    print(outlier_det %>% select(sampleID, i, is.outlier))
+  }
+}
+```
+### Remove outliers 
+
+can't simply filter here, would need to just NA value 
+```{r}
+#flowjo_dat_calc_perc <- 
+```
+
+
+Calculate stats across all count_adj and % columns
+
+
+### Absolute counts 
+
+```{r}
+absolute_counts <- flowjo_dat_calc_perc %>% 
+  select(Condition, sampleID, contains("count_adj")) %>% 
+  # need to make this flexible
+  column_to_rownames("sampleID")
+
+heatmap_annotation <- flowjo_dat %>% 
+  select(sampleID, Condition) %>% 
+  column_to_rownames("sampleID")
+```
+
+### Outlier flagging
+
+Heatmap 
+
+Ideally we do show colnames, need fix in-case they are super long
+```{r, fig.height=10, fig.width=12}
+pheatmap(absolute_counts %>% select(-Condition) %>% t() %>% log10(), cluster_cols = F, annotation_col = heatmap_annotation)
+```
+
+```{r, fig.height=6.5, fig.width=5.5}
+# have to grab condition on the fly 
+absolute_counts_long <- absolute_counts %>% 
+  pivot_longer(-Condition, names_to = "marker")
+
+comparisons <- make_combinations(absolute_counts_long$Condition)
+for (i in unique(absolute_counts_long$marker)){
+  
+  sub <- absolute_counts_long %>% 
+    filter(marker == i)
+  
+  marker <- sub("\\|.*", "", i)
+
+  p <- ggbarplot(sub, x = "Condition", y="value", fill = "Condition", 
+          add = c("mean_se"), ylab = paste0(marker, " (Absolute count)"),
+          width=0.5) +
+  geom_jitter(width = 0.1, size=3) + 
+     scale_y_continuous(expand = expansion(mult = c(0, 0.1))) + 
+  scale_color_prism("floral") +
+  scale_fill_prism("floral") +
+  theme_prism(base_size = 16) +
+  theme(legend.position = "none") +
+  stat_compare_means(comparisons = comparisons, method = "wilcox.test", label = "p.format") 
+  print(p)
+}
+```
+
+### Percentages
+
+```{r}
+# need to also figure out fix for sample id column
+perc <- flowjo_dat_calc_perc %>% 
+  select(Condition, sampleID, contains("%")) %>% 
+  column_to_rownames("sampleID")
+perc_long <- perc %>% 
+  pivot_longer(-Condition, names_to = "marker")
+```
+
+
+```{r, fig.height=10, fig.width=12}
+pheatmap(perc %>% select(-Condition) %>% t(), cluster_cols = F, annotation_col = heatmap_annotation)
+```
+
+
+```{r, fig.height=6.5, fig.width=5.5}
+for (i in unique(perc_long$marker)){
+  
+  sub <- perc_long %>% 
+    filter(marker == i)
+  
+  marker <- sub("\\|.*", "", i)
+
+  p <- ggbarplot(sub, x = "Condition", y="value", fill = "Condition", 
+          add = c("mean_se"), ylab = paste0(marker),
+          width=0.5) +
+  geom_jitter(width = 0.1, size=3) + 
+    scale_y_continuous(expand = expansion(mult = c(0, 0.1))) + 
+  stat_compare_means(comparisons = comparisons, method = "wilcox.test", label = "p.format") + 
+  scale_color_prism("floral") + 
+  scale_fill_prism("floral") + 
+  theme_prism(base_size = 16) + 
+  theme(legend.position = "none") 
+  print(p)
+}
+
+  
+```
